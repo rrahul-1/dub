@@ -350,7 +350,7 @@ export function useLinkBuilder({
 } = {}) {
   const workspace = useWorkspace();
   const [showLinkBuilder, setShowLinkBuilder] = useState(false);
-
+  
   const LinkBuilderCallback = useCallback(() => {
     return (
       <LinkBuilder
@@ -363,7 +363,7 @@ export function useLinkBuilder({
         modal={true}
       />
     );
-  }, [showLinkBuilder]);
+  }, [showLinkBuilder, workspace]);
 
   const CreateLinkButtonCallback = useCallback(
     (props?: CreateLinkButtonProps) => {
