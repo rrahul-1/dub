@@ -606,3 +606,112 @@ export const SUPPORTS_PATH2D = (function () {
   }
   return true;
 })();
+
+export function generateQRCodeSVGString(props: QRPropsSVG): string {
+  const {
+    value,
+    size = DEFAULT_SIZE,
+    level = DEFAULT_LEVEL,
+    bgColor = DEFAULT_BGCOLOR,
+    fgColor = DEFAULT_FGCOLOR,
+    margin = DEFAULT_MARGIN,
+    imageSettings,
+    dotStyle = "square",
+    markerCenterStyle = "square",
+    markerBorderStyle = "square",
+    markerColor,
+  } = props;
+
+  const effectiveMarkerColor = markerColor ?? fgColor;
+
+  const shouldUseHigherErrorLevel =
+    imageSettings?.excavate && (level === "L" || level === "M");
+
+  const effectiveLevel = shouldUseHigherErrorLevel ? "Q" : level;
+
+  let cells = qrcodegen.QrCode.encodeText(
+    value,
+    ERROR_LEVEL_MAP[effectiveLevel],
+  ).getModules();
+
+  const numCells = cells.length + margin * 2;
+  const numModules = cells.length;
+  const calculatedImageSettings = getImageSettings(
+    cells,
+    size,
+    margin,
+    imageSettings,
+  );
+
+  // Excavate logo area if needed
+  if (calculatedImageSettings?.excavation) {
+    cells = excavateModules(cells, calculatedImageSettings.excavation);
+  }
+
+  // Dot path
+  const fgPath =
+    dotStyle === "rounded"
+      ? generateRoundedDotPath(cells, margin)
+      : dotStyle === "extra-rounded"
+        ? generateExtraRoundedDotPath(cells, margin)
+        : generateSquareDotPath(cells, margin);
+
+  // Finder patterns
+  const finderPositions = [
+    { x: margin, y: margin },
+    { x: numModules - 7 + margin, y: margin },
+    { x: margin, y: numModules - 7 + margin },
+  ];
+
+  const finderPatternsSVG = finderPositions
+    .map((pos) =>
+      finderPatternToString(
+        pos.x,
+        pos.y,
+        effectiveMarkerColor,
+        markerBorderStyle,
+        markerCenterStyle,
+      ),
+    )
+    .join("");
+
+  // Logo image
+  let imageSVG = "";
+  if (imageSettings && calculatedImageSettings) {
+    imageSVG = `<image href="${imageSettings.src}" 
+      height="${calculatedImageSettings.h}" 
+      width="${calculatedImageSettings.w}" 
+      x="${calculatedImageSettings.x + margin}" 
+      y="${calculatedImageSettings.y + margin}" 
+      preserveAspectRatio="none"/>`;
+  }
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" height="${size}" width="${size}" viewBox="0 0 ${numCells} ${numCells}">
+    <path fill="${bgColor}" d="M0,0 h${numCells}v${numCells}H0z" shape-rendering="crispEdges"/>
+    <path fill="${fgColor}" d="${fgPath}" shape-rendering="crispEdges"/>
+    ${finderPatternsSVG}
+    ${imageSVG}
+  </svg>`;
+}
+
+function finderPatternToString(
+  x: number,
+  y: number,
+  markerColor: string,
+  borderStyle: MarkerBorderStyle = "square",
+  centerStyle: MarkerCenterStyle = "square",
+): string {
+  const cx = x + 3.5;
+  const cy = y + 3.5;
+  const borderPath = finderBorderPath(x, y, borderStyle); // already exists in your code
+
+  const center =
+    centerStyle === "circle"
+      ? `<circle cx="${cx}" cy="${cy}" r="1.5" fill="${markerColor}"/>`
+      : `<rect x="${x + 2}" y="${y + 2}" width="3" height="3" fill="${markerColor}" shape-rendering="crispEdges"/>`;
+
+  return `<g>
+    <path d="${borderPath}" fill="${markerColor}" fill-rule="evenodd"/>
+    ${center}
+  </g>`;
+}

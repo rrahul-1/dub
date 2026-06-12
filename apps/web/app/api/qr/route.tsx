@@ -2,7 +2,7 @@ import { handleAndReturnErrorResponse } from "@/lib/api/errors";
 import { ratelimitOrThrow } from "@/lib/api/utils";
 import { getShortLinkViaEdge, getWorkspaceViaEdge } from "@/lib/planetscale";
 import { getDomainViaEdge } from "@/lib/planetscale/get-domain-via-edge";
-import { QRCodeSVG } from "@/lib/qr/utils";
+import { QRCodeSVG, generateQRCodeSVGString } from "@/lib/qr/utils";
 import { getQRCodeQuerySchema } from "@/lib/zod/schemas/qr";
 import { DUB_QR_LOGO, getSearchParams, isDubDomain } from "@dub/utils";
 import { ImageResponse } from "next/og";
@@ -21,13 +21,22 @@ export async function GET(req: NextRequest) {
 
     await ratelimitOrThrow(req, "qr");
 
-    const { logo, url, size, level, fgColor, bgColor, margin, hideLogo } =
-      paramsParsed;
+    const {
+      logo,
+      url,
+      size,
+      level,
+      fgColor,
+      bgColor,
+      margin,
+      hideLogo,
+      format,
+    } = paramsParsed;
 
     const qrCodeLogo = await getQRCodeLogo({ url, logo, hideLogo });
 
-    return new ImageResponse(
-      QRCodeSVG({
+    if (format === "svg") {
+      const svgString = generateQRCodeSVGString({
         value: url,
         size,
         level,
@@ -37,21 +46,49 @@ export async function GET(req: NextRequest) {
         ...(qrCodeLogo
           ? {
               imageSettings: {
-                src: qrCodeLogo,
+                src: await getBase64Image(qrCodeLogo),
                 height: size / 4,
                 width: size / 4,
                 excavate: true,
               },
             }
           : {}),
-        isOGContext: true,
-      }),
-      {
-        width: size,
-        height: size,
-        headers: CORS_HEADERS,
-      },
-    );
+      });
+      return new Response(svgString, {
+        headers: {
+          ...CORS_HEADERS,
+          "Content-Type": "image/svg+xml",
+          "Content-Disposition": "inline; filename=qr.svg",
+        },
+      });
+    } else {
+      return new ImageResponse(
+        QRCodeSVG({
+          value: url,
+          size,
+          level,
+          fgColor,
+          bgColor,
+          margin,
+          ...(qrCodeLogo
+            ? {
+                imageSettings: {
+                  src: qrCodeLogo,
+                  height: size / 4,
+                  width: size / 4,
+                  excavate: true,
+                },
+              }
+            : {}),
+          isOGContext: true,
+        }),
+        {
+          width: size,
+          height: size,
+          headers: CORS_HEADERS,
+        },
+      );
+    }
   } catch (error) {
     return handleAndReturnErrorResponse(error, CORS_HEADERS);
   }
@@ -108,4 +145,12 @@ export function OPTIONS() {
     status: 204,
     headers: CORS_HEADERS,
   });
+}
+
+async function getBase64Image(qrCodeLogo: string) {
+  const logoRes = await fetch(qrCodeLogo);
+  const logoBuffer = await logoRes.arrayBuffer();
+  const logoBase64 = Buffer.from(logoBuffer).toString("base64");
+  const contentType = logoRes.headers.get("content-type") || "image/png";
+  return `data:${contentType};base64,${logoBase64}`;
 }
