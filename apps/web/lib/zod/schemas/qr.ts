@@ -64,4 +64,8 @@ export const getQRCodeQuerySchema = z.object({
       "DEPRECATED: Margin is included by default. Use the `margin` prop to customize the margin size.",
     )
     .meta({ deprecated: true }),
+  format: z
+    .enum(["png", "svg"])
+    .optional()
+    .default("png"),
 });
